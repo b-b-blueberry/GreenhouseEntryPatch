@@ -7,6 +7,7 @@ using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Buildings;
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
@@ -46,21 +47,38 @@ namespace GreenhouseEntryPatch
 	{
 		public bool CanEdit<T>(IAssetInfo asset)
 		{
-			return asset.AssetName.StartsWith("Buildings") && !asset.AssetName.EndsWith("_PaintMask") && !asset.AssetName.EndsWith("Greenhouse");
+			return asset.AssetName.StartsWith("Buildings")
+				&& !asset.AssetName.EndsWith("_PaintMask")
+				&& !asset.AssetName.EndsWith("Greenhouse")
+				&& !asset.AssetName.EndsWith("houses");
 		}
 
 		public void Edit<T>(IAssetData asset)
 		{
 			// Force baked-in shadows for any buildings to be fully transparent if specified in config
-			Color shadowColour = new Color(18, 0, 11, 89);
-			string buildingName = asset.AssetName.Split('\\').Last().Split(' ').Last();
-			PropertyInfo[] properties = ModEntry.Instance.Config.GetType().GetProperties();
-			PropertyInfo property = properties.FirstOrDefault(p => p.Name.Contains(buildingName));
-			if (ModEntry.Instance.Config.HideAllOtherShadows || (property != null && (bool)property.GetValue(ModEntry.Instance.Config)))
+			// Works for sprites with broad, single-colour shadows
+			
+			string building = Path.GetFileName(asset.AssetName);
+			PropertyInfo[] properties = ModEntry.Config.GetType().GetProperties();
+			PropertyInfo property = properties.FirstOrDefault(p => ModEntry.BuildingMatchesProperty(building: building, property: p.Name));
+			if (property == null)
+			{
+				ModEntry.Instance.Monitor.Log(
+					"We don't have a config option for " + building + "!"
+					+ "\nLeave a post on the mod page to have one added.",
+					LogLevel.Info);
+			}
+			if (ModEntry.Config.HideAllOtherShadows || (property != null && (bool)property.GetValue(ModEntry.Config)))
 			{
 				Texture2D sprite = asset.AsImage().Data;
 				Color[] pixels = new Color[sprite.Width * sprite.Height];
 				sprite.GetData(pixels);
+				// Many sprites have the bottom-left corner match with the shadow drawn later in-game, so we can use this as a shortcut
+				// Otherwise we have to search for a transparent pixel, which may not be the one we want, eg. baked-in light glow, windows, ..
+				Color cornerColour = pixels[(sprite.Height - 1) * sprite.Width];
+				Color shadowColour = cornerColour.A > 0 && cornerColour.A < 100
+					? cornerColour
+					: pixels.LastOrDefault(colour => colour.A > 0 && colour.A < 100);
 				for (int i = 0; i < pixels.Length; ++i)
 				{
 					if (pixels[i] == shadowColour)
@@ -77,8 +95,9 @@ namespace GreenhouseEntryPatch
 	public class ModEntry : Mod
 	{
 		internal static ModEntry Instance;
-		internal Config Config;
+		internal static Config Config;
 		internal ITranslationHelper i18n => Helper.Translation;
+		internal static readonly List<string> HiddenBuildings = new List<string>();
 
 		public override void Entry(IModHelper helper)
 		{
@@ -86,17 +105,19 @@ namespace GreenhouseEntryPatch
 			Config = helper.ReadConfig<Config>();
 			Helper.Content.AssetEditors.Add(new AssetManager());
 			Helper.Events.GameLoop.GameLaunched += this.GameLoopOnGameLaunched;
-			this.ApplyPatches();
 		}
 
 		private void GameLoopOnGameLaunched(object sender, GameLaunchedEventArgs e)
 		{
+			this.ApplyHarmonyPatches();
+			this.UpdateEnabledOptions();
 			this.RegisterGenericModConfigMenuPage();
 		}
 
-		private void ApplyPatches()
+		private void ApplyHarmonyPatches()
 		{
 			HarmonyInstance harmony = HarmonyInstance.Create(Helper.ModRegistry.ModID);
+
 			// Draw or hide shadows on select buildings
 			harmony.Patch(
 				original: AccessTools.Method(typeof(Building), "drawShadow"),
@@ -115,6 +136,51 @@ namespace GreenhouseEntryPatch
 				prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_DrawGenericShadow_Prefix)));
 		}
 
+		/// <summary>
+		/// Update list of buildings affected by current config options to decide which have shadows drawn,
+		/// and invalidate assets for all buildings to update appearances re: baked-in shadows.
+		/// </summary>
+		internal void UpdateEnabledOptions()
+		{
+			HiddenBuildings.Clear();
+
+			// Identify affected buildings
+			var blueprints = Game1.content.Load
+				<Dictionary<string, string>>
+				(Path.Combine("Data", "Blueprints"));
+			IEnumerable<string> buildings = blueprints.Keys.Where(key => blueprints[key].Split('/')[0] != "animal");
+			PropertyInfo[] properties = Config.GetType().GetProperties();
+			foreach (PropertyInfo property in properties)
+			{
+				// Config option must be enabled
+				// Config option must match building
+				// Duplicate entries are ignored
+				HiddenBuildings.AddRange(buildings.Where(
+					building => (bool)property.GetValue(Config)
+								&& !HiddenBuildings.Contains(building)
+								&& BuildingMatchesProperty(building: building, property: property.Name)
+				).ToList());
+			}
+
+			// Reload building sprite assets to reflect which buildings should have shadows embedded in their sprites
+			foreach (string building in buildings)
+			{
+				Helper.Content.InvalidateCache(Path.Combine("Buildings", building));
+			}
+		}
+
+		/// <summary>
+		/// Checks for config options for building types
+		/// Matches type (Deluxe Coop, Coop => HideCoopShadow) or building (Junimo Hut => HideJunimoHutShadow)
+		/// Loose pattern matching may cause problems with custom buildings with roughly similar names to vanilla buildings,
+		/// but for now nobody is making any custom buildings
+		/// </summary>
+		internal static bool BuildingMatchesProperty(string building, string property)
+		{
+			property = property.Replace("Shadow", "");
+			return property.EndsWith(building.Split(' ').Last()) || property.EndsWith(building.Replace(" ", ""));
+		}
+
 		private void RegisterGenericModConfigMenuPage()
 		{
 			IGenericModConfigMenuAPI api = Helper.ModRegistry.GetApi<IGenericModConfigMenuAPI>("spacechase0.GenericModConfigMenu");
@@ -128,12 +194,8 @@ namespace GreenhouseEntryPatch
 					// Apply changes to config
 					Helper.WriteConfig(Config);
 
-					// Reload building sprite assets to reflect which buildings should have shadows embedded in their sprites
-					IEnumerable<string> keys = Game1.content.Load<Dictionary<string, string>>(@"Data/Blueprints").Where(pair => pair.Value.Split('/')[0] != "animal").Select(pair => pair.Key);
-					foreach (string key in keys)
-					{
-						Helper.Content.InvalidateCache("Buildings/" + key);
-					}
+					// Reload list of buildings to affect
+					this.UpdateEnabledOptions();
 				});
 
 			// Populate config with all (assumed boolean) config values
@@ -172,25 +234,23 @@ namespace GreenhouseEntryPatch
 
 		public static bool Building_DrawShadow_Prefix(Building __instance)
 		{
-			if (Instance.Config.HideAllOtherShadows)
-				return false;
-			PropertyInfo property = Instance.Config.GetType().GetProperties().FirstOrDefault(p => p.Name.Contains(__instance.buildingType.Value.Split(' ').Last()));
-			return property == null || !(bool)property.GetValue(Instance.Config);
+			// Draw shadow (return true) if not hiding every building's shadow and not hiding this building's shadow
+			return !Config.HideAllOtherShadows && !HiddenBuildings.Contains(__instance.buildingType.Value);
 		}
 
 		public static bool Greenhouse_CanDrawEntranceTiles_Prefix()
 		{
-			return !Instance.Config.HideGreenhouseTiles;
+			return !Config.HideGreenhouseTiles;
 		}
 
 		public static bool Greenhouse_DrawShadow_Prefix()
 		{
-			return !Instance.Config.HideGreenhouseShadow;
+			return !Config.HideGreenhouseShadow;
 		}
 
 		public static bool Greenhouse_DrawGenericShadow_Prefix(GreenhouseBuilding __instance, SpriteBatch b, int localX = -1, int localY = -1)
 		{
-			if (!Instance.Config.HideGreenhouseShadow && Instance.Config.GreenhouseSoftShadow)
+			if (!Config.HideGreenhouseShadow && Config.GreenhouseSoftShadow)
 			{
 				const int entryTilesWide = 3;
 				float alpha = Instance.Helper.Reflection.GetField<NetFloat>(__instance, "alpha").GetValue();
@@ -201,6 +261,7 @@ namespace GreenhouseEntryPatch
 				Color colour = Color.White * ((localX == -1) ? alpha : 1f);
 
 				// Draw shadow underneath greenhouse (visible at the sides of the vanilla sprite and may be visible in custom sprites)
+				// '1E-05f' layerDepth value is an artefact from decompiled game code
 				b.Draw(
 					texture: Game1.mouseCursors,
 					destinationRectangle: new Rectangle(
@@ -219,7 +280,7 @@ namespace GreenhouseEntryPatch
 				for (int x = 1; x < __instance.tilesWide.Value - 1; x++)
 				{
 					// Avoid drawing over entry tiles if enabled
-					if (!Instance.Config.HideGreenhouseTiles
+					if (!Config.HideGreenhouseTiles
 						&& x > (__instance.tilesWide.Value - entryTilesWide) / 2
 						&& x < __instance.tilesWide.Value - ((__instance.tilesWide.Value - entryTilesWide) / 2))
 						continue;
