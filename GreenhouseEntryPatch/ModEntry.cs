@@ -36,22 +36,26 @@ namespace GreenhouseEntryPatch
 		public bool HideJunimoHutShadow { get; set; } = false;
 	}
 
-	public class AssetManager : IAssetEditor
+	public static class AssetManager
 	{
-		public bool CanEdit<T>(IAssetInfo asset)
+		public static void OnAssetRequested(object sender, AssetRequestedEventArgs e)
 		{
-			return asset.AssetName.StartsWith("Buildings")
-				&& !asset.AssetName.EndsWith("_PaintMask")
-				&& !asset.AssetName.EndsWith("houses")
-				&& (Constants.TargetPlatform is GamePlatform.Android || !asset.AssetName.EndsWith("Greenhouse"));
+			string name = e.NameWithoutLocale.ToString();
+			if (name.StartsWith("Buildings")
+				&& !name.EndsWith("_PaintMask")
+				&& !name.EndsWith("houses")
+				&& (!name.EndsWith("Greenhouse") || Constants.TargetPlatform is GamePlatform.Android))
+			{
+				e.Edit(apply: AssetManager.Edit);
+			}
 		}
 
-		public void Edit<T>(IAssetData asset)
+		private static void Edit(IAssetData asset)
 		{
 			// Force baked-in shadows for any buildings to be fully transparent if specified in config
 			// Works for sprites with broad, single-colour shadows
-			
-			string building = Path.GetFileName(asset.AssetName);
+
+			string building = Path.GetFileName(path: asset.NameWithoutLocale.ToString());
 			PropertyInfo[] properties = ModEntry.Config.GetType().GetProperties();
 			PropertyInfo property = properties.FirstOrDefault((PropertyInfo p) => ModEntry.BuildingMatchesProperty(building: building, property: p.Name));
 
@@ -104,7 +108,8 @@ namespace GreenhouseEntryPatch
 		{
 			ModEntry.Instance = this;
 			ModEntry.Config = helper.ReadConfig<Config>();
-			this.Helper.Content.AssetEditors.Add(new AssetManager());
+
+			this.Helper.Events.Content.AssetRequested += AssetManager.OnAssetRequested;
 			this.Helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
 		}
 
@@ -154,7 +159,7 @@ namespace GreenhouseEntryPatch
 			ModEntry.HiddenBuildings.Clear();
 
 			// Identify affected buildings
-			var blueprints = Game1.content.Load
+			var blueprints = this.Helper.GameContent.Load
 				<Dictionary<string, string>>
 				(Path.Combine("Data", "Blueprints"));
 			IEnumerable<string> buildings = blueprints.Keys.Where((string key) => blueprints[key].Split('/')[0] != "animal");
@@ -174,7 +179,7 @@ namespace GreenhouseEntryPatch
 			// Reload building sprite assets to reflect which buildings should have shadows embedded in their sprites
 			foreach (string building in buildings)
 			{
-				this.Helper.Content.InvalidateCache(Path.Combine("Buildings", building));
+				this.Helper.GameContent.InvalidateCache(Path.Combine("Buildings", building));
 			}
 		}
 
