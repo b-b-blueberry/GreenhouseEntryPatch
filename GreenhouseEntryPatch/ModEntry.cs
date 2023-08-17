@@ -14,13 +14,6 @@ using System.Collections.Generic;
 
 namespace GreenhouseEntryPatch
 {
-	public interface IGenericModConfigMenuAPI
-	{
-		void RegisterModConfig(IManifest mod, Action revertToDefault, Action saveToFile);
-		void RegisterSimpleOption(IManifest mod, string optionName, string optionDesc, Func<bool> optionGet, Action<bool> optionSet);
-		void RegisterLabel(IManifest mod, string labelName, string labelDesc);
-	}
-
 	public class Config
 	{
 		public bool HideGreenhouseTiles { get; set; } = true;
@@ -198,9 +191,10 @@ namespace GreenhouseEntryPatch
 			if (api == null)
 				return;
 
-			api.RegisterModConfig(ModManifest,
-				revertToDefault: () => Config = new Config(),
-				saveToFile: () =>
+			api.Register(
+				mod: ModManifest,
+				reset: () => Config = new Config(),
+				save: () =>
 				{
 					// Apply changes to config
 					Helper.WriteConfig(Config);
@@ -226,19 +220,20 @@ namespace GreenhouseEntryPatch
 					// Real properties
 					name = i18n.Get("config." + key + ".name");
 					description = i18n.Get("config." + key + ".description");
-					api.RegisterSimpleOption(ModManifest,
-						optionName: name.HasValue() ? name : property.Name,
-						optionDesc: description.HasValue() ? description : null,
-						optionGet: () => (bool)property.GetValue(Config),
-						optionSet: (bool value) => property.SetValue(Config, value));
+					api.AddBoolOption(
+						mod: ModManifest,
+						name: () => name.HasValue() ? name : property.Name,
+						tooltip: () => description.HasValue() ? description : null,
+						getValue: () => (bool)property.GetValue(Config),
+						setValue: (bool value) => property.SetValue(Config, value));
 				}
 				else
 				{
 					// Labels
 					name = i18n.Get("config." + key + ".label");
-					api.RegisterLabel(ModManifest,
-						labelName: name,
-						labelDesc: null);
+					api.AddSectionTitle(
+						mod: ModManifest,
+						text: () => name);
 				}
 			}
 		}
