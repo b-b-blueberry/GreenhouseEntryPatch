@@ -1,4 +1,4 @@
-﻿using Harmony; // el diavolo
+﻿using HarmonyLib; // el diavolo nuevo
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Netcode;
@@ -49,8 +49,8 @@ namespace GreenhouseEntryPatch
 		{
 			return asset.AssetName.StartsWith("Buildings")
 				&& !asset.AssetName.EndsWith("_PaintMask")
-				&& !asset.AssetName.EndsWith("Greenhouse")
-				&& !asset.AssetName.EndsWith("houses");
+				&& !asset.AssetName.EndsWith("houses")
+				&& (Constants.TargetPlatform == GamePlatform.Android || !asset.AssetName.EndsWith("Greenhouse"));
 		}
 
 		public void Edit<T>(IAssetData asset)
@@ -116,24 +116,35 @@ namespace GreenhouseEntryPatch
 
 		private void ApplyHarmonyPatches()
 		{
-			HarmonyInstance harmony = HarmonyInstance.Create(Helper.ModRegistry.ModID);
+			Harmony harmony = new Harmony(id: Helper.ModRegistry.ModID);
 
 			// Draw or hide shadows on select buildings
 			harmony.Patch(
 				original: AccessTools.Method(typeof(Building), "drawShadow"),
 				prefix: new HarmonyMethod(this.GetType(), nameof(Building_DrawShadow_Prefix)));
-			// Draw or hide entrance tiles on greenhouse
-			harmony.Patch(
-				original: AccessTools.Method(typeof(GreenhouseBuilding), "CanDrawEntranceTiles"),
-				prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_CanDrawEntranceTiles_Prefix)));
-			// Draw or hide shadow on greenhouse
-			harmony.Patch(
-				original: AccessTools.Method(typeof(GreenhouseBuilding), "drawShadow"),
-				prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_DrawShadow_Prefix)));
-			// Draw generic shadow on greenhouse
-			harmony.Patch(
-				original: AccessTools.Method(typeof(GreenhouseBuilding), "drawShadow"),
-				prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_DrawGenericShadow_Prefix)));
+			if (Constants.TargetPlatform == GamePlatform.Android)
+			{
+				ModEntry.Instance.Monitor.Log(
+					"Looks like you're playing on Android!"
+					+ "\nThe greenhouse entry tiles aren't hideable in the same way for Android, and you'll need a Farm map edit to hide them."
+					+ "\nHiding building shadows still works as normal!",
+					LogLevel.Info);
+			}
+			else
+			{
+				// Draw or hide entrance tiles on greenhouse
+				harmony.Patch(
+					original: AccessTools.Method(typeof(GreenhouseBuilding), "CanDrawEntranceTiles"),
+					prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_CanDrawEntranceTiles_Prefix)));
+				// Draw or hide shadow on greenhouse
+				harmony.Patch(
+					original: AccessTools.Method(typeof(GreenhouseBuilding), "drawShadow"),
+					prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_DrawShadow_Prefix)));
+				// Draw generic shadow on greenhouse
+				harmony.Patch(
+					original: AccessTools.Method(typeof(GreenhouseBuilding), "drawShadow"),
+					prefix: new HarmonyMethod(this.GetType(), nameof(Greenhouse_DrawGenericShadow_Prefix)));
+			}
 		}
 
 		/// <summary>
