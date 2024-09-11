@@ -33,6 +33,8 @@ namespace GreenhouseEntryPatch
 		public bool HideObeliskShadow { get; set; } = false;
 		public bool HideGoldClockShadow { get; set; } = false;
 		public bool HideJunimoHutShadow { get; set; } = false;
+		public bool HideMailboxShadow { get; set; } = false;
+		public bool HidePetBowlShadow { get; set; } = false;
 	}
 
 	public static class AssetManager

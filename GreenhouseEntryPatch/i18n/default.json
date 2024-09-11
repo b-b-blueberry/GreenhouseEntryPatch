@@ -21,6 +21,8 @@
     "config.hideobeliskshadow.name": "Hide Obelisk Shadows",
     "config.hidegoldclockshadow.name": "Hide Gold Clock Shadows",
     "config.hidejunimohutshadow.name": "Hide Junimo Hut Shadows",
+    "config.hidemailboxshadow.name": "Hide Mailbox Shadows",
+    "config.hidepetbowlshadow.name": "Hide Pet Bowl Shadows",
     "config.greenhouseoptions.label": "Greenhouse",
     "config.otherbuildingsoptions.label": "Other Buildings",
     "config.specificbuildingsoptions.label": "Specific Buildings     v  SPOILERS  v"
