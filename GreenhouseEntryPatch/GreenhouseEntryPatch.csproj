@@ -4,14 +4,18 @@
     <AssemblyName>GreenhouseEntryPatch</AssemblyName>
     <RootNamespace>GreenhouseEntryPatch</RootNamespace>
     <Version>1.2.1</Version>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <EnableHarmony>true</EnableHarmony>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.1.1" />
+	<PropertyGroup>
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.2.0" />
   </ItemGroup>
 
 </Project>

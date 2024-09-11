@@ -1,12 +1,11 @@
 ﻿using HarmonyLib; // el diavolo nuevo
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Netcode;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Buildings;
-using System;
+using StardewValley.GameData.Buildings;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -69,7 +68,7 @@ namespace GreenhouseEntryPatch
 			}
 
 			// Edit sprite asset
-			if (ModEntry.Config.HideAllOtherShadows || ((bool)property?.GetValue(ModEntry.Config)))
+			if (ModEntry.Config.HideAllOtherShadows || property?.GetValue(ModEntry.Config) is bool isHidden && isHidden)
 			{
 				// Read sprite pixels
 				Texture2D sprite = asset.AsImage().Data;
@@ -102,7 +101,7 @@ namespace GreenhouseEntryPatch
 		internal static ModEntry Instance;
 		internal static Config Config;
 		internal ITranslationHelper I18n => this.Helper.Translation;
-		internal static readonly List<string> HiddenBuildings = new();
+		internal static readonly List<string> HiddenBuildings = [];
 
 		public override void Entry(IModHelper helper)
 		{
@@ -159,17 +158,16 @@ namespace GreenhouseEntryPatch
 			ModEntry.HiddenBuildings.Clear();
 
 			// Identify affected buildings
-			var blueprints = this.Helper.GameContent.Load
-				<Dictionary<string, string>>
-				(Path.Combine("Data", "Blueprints"));
-			IEnumerable<string> buildings = blueprints.Keys.Where((string key) => blueprints[key].Split('/')[0] != "animal");
+			var buildings = this.Helper.GameContent.Load
+				<Dictionary<string, BuildingData>>
+				(Path.Combine("Data", "Buildings"));
 			PropertyInfo[] properties = ModEntry.Config.GetType().GetProperties();
 			foreach (PropertyInfo property in properties)
 			{
 				// Config option must be enabled
 				// Config option must match building
 				// Duplicate entries are ignored
-				ModEntry.HiddenBuildings.AddRange(buildings.Where((string building) =>
+				ModEntry.HiddenBuildings.AddRange(buildings.Keys.Where((string building) =>
 					(bool)property.GetValue(ModEntry.Config)
 						&& !ModEntry.HiddenBuildings.Contains(building)
 						&& ModEntry.BuildingMatchesProperty(building: building, property: property.Name))
@@ -177,9 +175,9 @@ namespace GreenhouseEntryPatch
 			}
 
 			// Reload building sprite assets to reflect which buildings should have shadows embedded in their sprites
-			foreach (string building in buildings)
+			foreach (var building in buildings)
 			{
-				this.Helper.GameContent.InvalidateCache(Path.Combine("Buildings", building));
+				this.Helper.GameContent.InvalidateCache(building.Value.Texture);
 			}
 		}
 
@@ -215,11 +213,12 @@ namespace GreenhouseEntryPatch
 
 			// Populate config with all (assumed boolean) config values
 			List<string> menu = ModEntry.Config.GetType().GetProperties().Select((PropertyInfo p) => p.Name).ToList();
-
+			
 			// Add labels between options manually
 			menu.Insert(4, "SpecificBuildingsOptions");
 			menu.Insert(3, "OtherBuildingsOptions");
 			menu.Insert(0, "GreenhouseOptions");
+			
 			foreach (string entry in menu)
 			{
 				string key = entry.ToLower();
@@ -228,8 +227,8 @@ namespace GreenhouseEntryPatch
 				if (property is not null)
 				{
 					// Real properties
-					name = this.I18n.Get("config." + key + ".name");
-					description = this.I18n.Get("config." + key + ".description");
+					name = this.I18n.Get($"config.{key}.name");
+					description = this.I18n.Get($"config.{key}.description");
 					api.AddBoolOption(
 						mod: this.ModManifest,
 						name: () => name.HasValue() ? name : property.Name,
@@ -240,7 +239,7 @@ namespace GreenhouseEntryPatch
 				else
 				{
 					// Labels
-					name = this.I18n.Get("config." + key + ".label");
+					name = this.I18n.Get($"config.{key}.label");
 					api.AddSectionTitle(
 						mod: this.ModManifest,
 						text: () => name);
@@ -273,7 +272,7 @@ namespace GreenhouseEntryPatch
 				bool isGhost = localX == -1;
 				Vector2 tile = new(x: __instance.tileX.Value, y: __instance.tileY.Value);
 				Vector2 size = new(x: __instance.tilesWide.Value, y: __instance.tilesHigh.Value);
-				Rectangle source = __instance.getSourceRectForMenu();
+				Rectangle source = __instance.getSourceRectForMenu() ?? __instance.getSourceRect();
 				Vector2 top = Game1.GlobalToLocal(globalPosition: tile * Game1.tileSize);
 				Vector2 bottom = isGhost
 					? new(
@@ -282,7 +281,7 @@ namespace GreenhouseEntryPatch
 					: new(
 						x: localX,
 						y: localY + (source.Height * Game1.pixelZoom));
-				Color colour = Color.White * (isGhost ? ModEntry.Instance.Helper.Reflection.GetField<NetFloat>(__instance, "alpha").GetValue() : 1);
+				Color colour = Color.White * (isGhost ? ModEntry.Instance.Helper.Reflection.GetField<float>(__instance, "alpha").GetValue() : 1);
 				const float layerDepth = 1E-05f;
 
 				// Draw shadow underneath greenhouse (visible at the sides of the vanilla sprite and may be visible in custom sprites)
