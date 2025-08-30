@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>GreenhouseEntryPatch</AssemblyName>
     <RootNamespace>GreenhouseEntryPatch</RootNamespace>
-    <Version>1.2.1</Version>
+    <Version>1.3.0</Version>
     <TargetFramework>net6.0</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
