@@ -6,7 +6,7 @@ namespace GreenhouseEntryPatch;
 
 public class ModEntry : Mod
 {
-	public override void Entry(IModHelper helper) => new Harmony(this.Helper.ModRegistry.ModID).Patch(AccessTools.Method(typeof(GreenhouseBuilding), "CanDrawEntranceTiles"), new HarmonyMethod(this.GetType(), nameof(ModEntry.Greenhouse_CanDrawEntranceTiles_Prefix)));
+	public override void Entry(IModHelper helper) => new Harmony(this.Helper.ModRegistry.ModID).Patch(original: AccessTools.Method(typeof(GreenhouseBuilding), "CanDrawEntranceTiles"), postfix: new HarmonyMethod(this.GetType(), nameof(ModEntry.Greenhouse_CanDrawEntranceTiles_Postfix)));
 
-	public static bool Greenhouse_CanDrawEntranceTiles_Prefix() => false;
+	public static void Greenhouse_CanDrawEntranceTiles_Postfix(ref bool __result) => __result = false;
 }
