@@ -1,7 +1,7 @@
 ﻿{
     "Name": "Greenhouse Entry Begone!",
     "Author": "blueberry",
-    "Version": "1.3.0-alpha.0",
+    "Version": "1.4.0",
     "Description": "Hides the greenhouse entry tiles.",
     "UniqueID": "blueberry.GreenhouseEntryBegone",
     "EntryDll": "GreenhouseEntryPatch.dll",
